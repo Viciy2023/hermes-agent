@@ -1,11 +1,97 @@
 #!/bin/bash
 set -e
+shopt -s nullglob
 
 PERSIST_HOME_RAW="${HERMES_HOME:-/data}"
 PERSIST_HOME="$(printf '%s' "$PERSIST_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 RUNTIME_HOME_RAW="${HERMES_RUNTIME_HOME:-/tmp/hermes-runtime}"
 RUNTIME_HOME="$(printf '%s' "$RUNTIME_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+PERSIST_SYNC_SECONDS="${HERMES_PERSIST_SYNC_SECONDS:-120}"
 INSTALL_DIR="/opt/hermes"
+
+sync_file_if_present() {
+    local src="$1"
+    local dest="$2"
+    if [ -f "$src" ]; then
+        mkdir -p "$(dirname "$dest")"
+        cp -f "$src" "$dest"
+    fi
+}
+
+sync_dir_contents() {
+    local src="$1"
+    local dest="$2"
+    if [ -d "$src" ]; then
+        mkdir -p "$dest"
+        cp -a "$src"/. "$dest"/
+    fi
+}
+
+sync_weixin_persist_to_runtime() {
+    local persist_accounts="$PERSIST_HOME/weixin/accounts"
+    local runtime_accounts="$RUNTIME_HOME/weixin/accounts"
+    mkdir -p "$runtime_accounts"
+    for file in "$persist_accounts"/*.json; do
+        [ -f "$file" ] || continue
+        cp -f "$file" "$runtime_accounts/$(basename "$file")"
+    done
+}
+
+sync_weixin_runtime_to_persist() {
+    local persist_accounts="$PERSIST_HOME/weixin/accounts"
+    local runtime_accounts="$RUNTIME_HOME/weixin/accounts"
+    mkdir -p "$persist_accounts"
+    for file in "$runtime_accounts"/*.json; do
+        [ -f "$file" ] || continue
+        case "$(basename "$file")" in
+            *.sync.json|*.context-tokens.json)
+                continue
+                ;;
+        esac
+        cp -f "$file" "$persist_accounts/$(basename "$file")"
+    done
+}
+
+sync_persist_to_runtime() {
+    sync_file_if_present "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
+    sync_file_if_present "$PERSIST_HOME/config.yaml" "$RUNTIME_HOME/config.yaml"
+    sync_file_if_present "$PERSIST_HOME/SOUL.md" "$RUNTIME_HOME/SOUL.md"
+    sync_file_if_present "$PERSIST_HOME/state.db" "$RUNTIME_HOME/state.db"
+    sync_dir_contents "$PERSIST_HOME/sessions" "$RUNTIME_HOME/sessions"
+    sync_dir_contents "$PERSIST_HOME/memories" "$RUNTIME_HOME/memories"
+    sync_dir_contents "$PERSIST_HOME/skills" "$RUNTIME_HOME/skills"
+    sync_dir_contents "$PERSIST_HOME/cron" "$RUNTIME_HOME/cron"
+    sync_dir_contents "$PERSIST_HOME/home" "$RUNTIME_HOME/home"
+    sync_dir_contents "$PERSIST_HOME/hooks" "$RUNTIME_HOME/hooks"
+    sync_dir_contents "$PERSIST_HOME/skins" "$RUNTIME_HOME/skins"
+    sync_dir_contents "$PERSIST_HOME/plans" "$RUNTIME_HOME/plans"
+    sync_dir_contents "$PERSIST_HOME/workspace" "$RUNTIME_HOME/workspace"
+    sync_weixin_persist_to_runtime
+}
+
+sync_runtime_to_persist() {
+    sync_file_if_present "$RUNTIME_HOME/.env" "$PERSIST_HOME/.env"
+    sync_file_if_present "$RUNTIME_HOME/config.yaml" "$PERSIST_HOME/config.yaml"
+    sync_file_if_present "$RUNTIME_HOME/SOUL.md" "$PERSIST_HOME/SOUL.md"
+    sync_file_if_present "$RUNTIME_HOME/state.db" "$PERSIST_HOME/state.db"
+    sync_dir_contents "$RUNTIME_HOME/sessions" "$PERSIST_HOME/sessions"
+    sync_dir_contents "$RUNTIME_HOME/memories" "$PERSIST_HOME/memories"
+    sync_dir_contents "$RUNTIME_HOME/skills" "$PERSIST_HOME/skills"
+    sync_dir_contents "$RUNTIME_HOME/cron" "$PERSIST_HOME/cron"
+    sync_dir_contents "$RUNTIME_HOME/home" "$PERSIST_HOME/home"
+    sync_dir_contents "$RUNTIME_HOME/hooks" "$PERSIST_HOME/hooks"
+    sync_dir_contents "$RUNTIME_HOME/skins" "$PERSIST_HOME/skins"
+    sync_dir_contents "$RUNTIME_HOME/plans" "$PERSIST_HOME/plans"
+    sync_dir_contents "$RUNTIME_HOME/workspace" "$PERSIST_HOME/workspace"
+    sync_weixin_runtime_to_persist
+}
+
+start_persist_sync_loop() {
+    while true; do
+        sleep "$PERSIST_SYNC_SECONDS"
+        sync_runtime_to_persist || true
+    done
+}
 
 if [ "$(id -u)" = "0" ]; then
     if [ -n "$HERMES_UID" ] && [ "$HERMES_UID" != "$(id -u hermes)" ]; then
@@ -62,9 +148,7 @@ if [ ! -f "$PERSIST_HOME/SOUL.md" ]; then
     cp "$INSTALL_DIR/docker/SOUL.md" "$PERSIST_HOME/SOUL.md"
 fi
 
-cp "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
-cp "$PERSIST_HOME/config.yaml" "$RUNTIME_HOME/config.yaml"
-cp "$PERSIST_HOME/SOUL.md" "$RUNTIME_HOME/SOUL.md"
+sync_persist_to_runtime
 
 if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
@@ -234,10 +318,22 @@ export API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
 export API_SERVER_PORT="${API_SERVER_PORT:-${PORT:-7860}}"
 export API_SERVER_MODEL_NAME="${API_SERVER_MODEL_NAME:-Hermes-Agent}"
 
-cp "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
-cp "$PERSIST_HOME/config.yaml" "$RUNTIME_HOME/config.yaml"
-cp "$PERSIST_HOME/SOUL.md" "$RUNTIME_HOME/SOUL.md"
+sync_persist_to_runtime
 
 export HERMES_HOME="$RUNTIME_HOME"
 
-exec hermes gateway run
+start_persist_sync_loop &
+SYNC_PID=$!
+
+hermes gateway run &
+MAIN_PID=$!
+
+STATUS=0
+if ! wait "$MAIN_PID"; then
+    STATUS=$?
+fi
+
+kill "$SYNC_PID" 2>/dev/null || true
+sync_runtime_to_persist || true
+
+exit "$STATUS"
