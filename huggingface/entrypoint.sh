@@ -162,8 +162,10 @@ fi
 export HERMES_HOME="$PERSIST_HOME"
 python3 - <<'PY'
 import asyncio
+import json
 import os
 import sys
+from pathlib import Path
 
 from gateway.platforms.weixin import check_weixin_requirements, qr_login
 from hermes_cli.config import save_env_value, get_env_value
@@ -207,6 +209,41 @@ def should_run_weixin_qr_login(env: dict[str, str | None]) -> tuple[bool, str]:
     return True, "missing_credentials"
 
 
+def load_weixin_account_fallback(hermes_home: str, account_id_hint: str) -> dict[str, str]:
+    accounts_dir = Path(hermes_home) / "weixin" / "accounts"
+    if not accounts_dir.exists():
+        return {}
+
+    candidates = []
+    if account_id_hint:
+        candidates.append(accounts_dir / f"{account_id_hint}.json")
+    candidates.extend(sorted(accounts_dir.glob("*.json"), reverse=True))
+
+    seen = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen or not candidate.is_file():
+            continue
+        seen.add(candidate)
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"Weixin bootstrap: failed to read persisted account file {candidate}: {exc}")
+            continue
+        token = str(data.get("token") or "").strip()
+        base_url = str(data.get("base_url") or "").strip()
+        account_id = candidate.stem
+        if token:
+            return {
+                "WEIXIN_ACCOUNT_ID": account_id,
+                "WEIXIN_TOKEN": token,
+                "WEIXIN_BASE_URL": base_url,
+                "_source": str(candidate),
+            }
+    return {}
+
+
+hermes_home = os.getenv("HERMES_HOME", "/data")
 env_values = {key: get_env_value(key) or os.getenv(key) for key in [
     "WEIXIN_ENABLED",
     "WEIXIN_AUTO_QR_LOGIN",
@@ -222,6 +259,32 @@ env_values = {key: get_env_value(key) or os.getenv(key) for key in [
     "WEIXIN_HOME_CHANNEL_NAME",
     "WEIXIN_ALLOW_ALL_USERS",
 ]}
+
+print(
+    "Weixin bootstrap: env snapshot "
+    f"account_id={'set' if env_values.get('WEIXIN_ACCOUNT_ID') else 'missing'} "
+    f"token={'set' if env_values.get('WEIXIN_TOKEN') else 'missing'} "
+    f"base_url={env_values.get('WEIXIN_BASE_URL') or '(missing)'}"
+)
+
+if not env_values.get("WEIXIN_ACCOUNT_ID") or not env_values.get("WEIXIN_TOKEN"):
+    fallback = load_weixin_account_fallback(hermes_home, str(env_values.get("WEIXIN_ACCOUNT_ID") or "").strip())
+    if fallback:
+        print(
+            "Weixin bootstrap: loaded persisted account file "
+            f"source={fallback.get('_source')} account_id={fallback.get('WEIXIN_ACCOUNT_ID')}"
+        )
+        env_values["WEIXIN_ACCOUNT_ID"] = fallback.get("WEIXIN_ACCOUNT_ID")
+        env_values["WEIXIN_TOKEN"] = fallback.get("WEIXIN_TOKEN")
+        if fallback.get("WEIXIN_BASE_URL"):
+            env_values["WEIXIN_BASE_URL"] = fallback.get("WEIXIN_BASE_URL")
+
+print(
+    "Weixin bootstrap: effective credentials "
+    f"account_id={'set' if env_values.get('WEIXIN_ACCOUNT_ID') else 'missing'} "
+    f"token={'set' if env_values.get('WEIXIN_TOKEN') else 'missing'} "
+    f"base_url={env_values.get('WEIXIN_BASE_URL') or '(missing)'}"
+)
 
 should_run_qr, reason = should_run_weixin_qr_login(env_values)
 
@@ -243,7 +306,6 @@ if not check_weixin_requirements():
     print("Weixin bootstrap failed: aiohttp and cryptography are required.")
     sys.exit(1)
 
-hermes_home = os.getenv("HERMES_HOME", "/data")
 try:
     timeout_seconds = int(os.getenv("WEIXIN_QR_TIMEOUT_SECONDS", "480"))
 except ValueError:
