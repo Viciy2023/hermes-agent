@@ -69,7 +69,7 @@ import sys
 
 from gateway.platforms.weixin import check_weixin_requirements, qr_login
 from hermes_cli.config import save_env_value, get_env_value
-from huggingface.runtime_state import should_run_weixin_qr_login, validate_weixin_credentials
+from huggingface.runtime_state import should_run_weixin_qr_login
 
 
 def truthy(value: str | None, default: bool = False) -> bool:
@@ -98,20 +98,18 @@ env_values = {key: get_env_value(key) or os.getenv(key) for key in [
 ]}
 
 should_run_qr, reason = asyncio.run(
-    should_run_weixin_qr_login(env_values, validate_weixin_credentials)
+    should_run_weixin_qr_login(env_values)
 )
 
 if reason == "not_requested":
     sys.exit(0)
 
-if not should_run_qr and reason == "valid_credentials":
-    print("Weixin bootstrap: existing credentials detected and validated, skipping QR login.")
+if not should_run_qr and reason == "credentials_present":
+    print("Weixin bootstrap: credentials present, reusing saved session.")
     sys.exit(0)
 
 if not should_run_qr:
-    if reason == "invalid_credentials_auto_qr_disabled":
-        print("Weixin bootstrap: saved credentials are invalid and WEIXIN_AUTO_QR_LOGIN is disabled.")
-    elif reason == "missing_credentials_auto_qr_disabled":
+    if reason == "missing_credentials_auto_qr_disabled":
         print("Weixin bootstrap: WEIXIN_AUTO_QR_LOGIN is disabled and credentials are missing.")
     else:
         print(f"Weixin bootstrap skipped: {reason}")

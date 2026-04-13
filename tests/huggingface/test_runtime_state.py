@@ -46,7 +46,7 @@ def test_plan_bidirectional_sync_ignores_transient_files(tmp_path):
     assert actions == [("runtime_to_persist", "keep.txt")]
 
 
-def test_should_run_weixin_qr_login_skips_when_saved_credentials_are_valid():
+def test_should_run_weixin_qr_login_reuses_saved_credentials_without_prevalidation():
     env = {
         "WEIXIN_ENABLED": "true",
         "WEIXIN_ACCOUNT_ID": "acct",
@@ -54,28 +54,18 @@ def test_should_run_weixin_qr_login_skips_when_saved_credentials_are_valid():
         "WEIXIN_BASE_URL": "https://ilink.example.com",
     }
 
-    async def validator(account_id: str, token: str, base_url: str) -> bool:
-        assert (account_id, token, base_url) == ("acct", "token", "https://ilink.example.com")
-        return True
-
-    should_run, reason = asyncio.run(should_run_weixin_qr_login(env, validator))
+    should_run, reason = asyncio.run(should_run_weixin_qr_login(env))
 
     assert should_run is False
-    assert reason == "valid_credentials"
+    assert reason == "credentials_present"
 
 
-def test_should_run_weixin_qr_login_requests_qr_when_saved_credentials_are_invalid():
+def test_should_run_weixin_qr_login_still_requests_qr_when_credentials_are_missing():
     env = {
         "WEIXIN_ENABLED": "true",
-        "WEIXIN_ACCOUNT_ID": "acct",
-        "WEIXIN_TOKEN": "token",
-        "WEIXIN_BASE_URL": "https://ilink.example.com",
     }
 
-    async def validator(account_id: str, token: str, base_url: str) -> bool:
-        return False
-
-    should_run, reason = asyncio.run(should_run_weixin_qr_login(env, validator))
+    should_run, reason = asyncio.run(should_run_weixin_qr_login(env))
 
     assert should_run is True
-    assert reason == "invalid_credentials"
+    assert reason == "missing_credentials"

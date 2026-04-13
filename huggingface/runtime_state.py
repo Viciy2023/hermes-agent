@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import os
 import shutil
 from pathlib import Path
-from typing import Awaitable, Callable, Iterable, Mapping
+from typing import Iterable, Mapping
 
 TRANSIENT_SUFFIXES = (
     ".sync.json",
@@ -114,36 +112,8 @@ def apply_sync_actions(runtime_root: Path, persist_root: Path, actions: Iterable
         shutil.copy2(src, dest)
 
 
-async def validate_weixin_credentials(account_id: str, token: str, base_url: str) -> bool:
-    from gateway.platforms.weixin import AIOHTTP_AVAILABLE, LONG_POLL_TIMEOUT_MS, _api_post, aiohttp, EP_GET_UPDATES
-
-    if not account_id or not token or not base_url or not AIOHTTP_AVAILABLE:
-        return False
-
-    timeout_ms = min(LONG_POLL_TIMEOUT_MS, 1500)
-    try:
-        async with aiohttp.ClientSession(trust_env=True) as session:
-            response = await _api_post(
-                session,
-                base_url=base_url.rstrip("/"),
-                endpoint=EP_GET_UPDATES,
-                payload={"get_updates_buf": ""},
-                token=token,
-                timeout_ms=timeout_ms,
-            )
-    except asyncio.TimeoutError:
-        return True
-    except Exception:
-        return False
-
-    ret = response.get("ret", 0)
-    errcode = response.get("errcode", 0)
-    return ret in (0, None) and errcode in (0, None)
-
-
 async def should_run_weixin_qr_login(
     env: Mapping[str, str | None],
-    validator: Callable[[str, str, str], Awaitable[bool]],
 ) -> tuple[bool, str]:
     intent_keys = [
         "WEIXIN_DM_POLICY",
@@ -164,14 +134,9 @@ async def should_run_weixin_qr_login(
     auto_qr_enabled = _is_truthy(env.get("WEIXIN_AUTO_QR_LOGIN"), True)
     account_id = str(env.get("WEIXIN_ACCOUNT_ID") or "").strip()
     token = str(env.get("WEIXIN_TOKEN") or "").strip()
-    base_url = str(env.get("WEIXIN_BASE_URL") or "https://ilinkai.weixin.qq.com").strip()
 
     if account_id and token:
-        if await validator(account_id, token, base_url):
-            return False, "valid_credentials"
-        if not auto_qr_enabled:
-            return False, "invalid_credentials_auto_qr_disabled"
-        return True, "invalid_credentials"
+        return False, "credentials_present"
 
     if not auto_qr_enabled:
         return False, "missing_credentials_auto_qr_disabled"
