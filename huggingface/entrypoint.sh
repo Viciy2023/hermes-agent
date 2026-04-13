@@ -74,6 +74,7 @@ fi
 # If Weixin is requested and credentials are missing, print the QR login flow
 # into the Space logs, persist the returned credentials into /data/.env, then
 # continue to start the gateway.
+export HERMES_HOME="$PERSIST_HOME"
 python3 - <<'PY'
 import asyncio
 import os
@@ -151,6 +152,8 @@ if truthy(os.getenv("WEIXIN_AUTO_SET_HOME_CHANNEL"), True) and user_id and not g
 
 print(f"Weixin bootstrap succeeded: credentials were saved to {hermes_home}/.env.")
 PY
+
+cp "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
 
 # Sync process-level model overrides into /data/config.yaml so the gateway and
 # background tasks use the same effective provider/model after restarts.
