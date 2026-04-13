@@ -114,6 +114,7 @@ def apply_sync_actions(runtime_root: Path, persist_root: Path, actions: Iterable
 
 async def should_run_weixin_qr_login(
     env: Mapping[str, str | None],
+    legacy_validator=None,
 ) -> tuple[bool, str]:
     intent_keys = [
         "WEIXIN_DM_POLICY",

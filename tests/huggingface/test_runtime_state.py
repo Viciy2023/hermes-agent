@@ -69,3 +69,19 @@ def test_should_run_weixin_qr_login_still_requests_qr_when_credentials_are_missi
 
     assert should_run is True
     assert reason == "missing_credentials"
+
+
+def test_should_run_weixin_qr_login_accepts_legacy_validator_argument():
+    env = {
+        "WEIXIN_ENABLED": "true",
+        "WEIXIN_ACCOUNT_ID": "acct",
+        "WEIXIN_TOKEN": "token",
+    }
+
+    async def legacy_validator(account_id: str, token: str, base_url: str) -> bool:
+        raise AssertionError("legacy validator should be ignored")
+
+    should_run, reason = asyncio.run(should_run_weixin_qr_login(env, legacy_validator))
+
+    assert should_run is False
+    assert reason == "credentials_present"
