@@ -15,6 +15,7 @@
 - Space 重启后自动从 `/data` 恢复状态
 - 通过 Hermes 内置 API Server 对外提供 HTTP 接口
 - 兼容 Hugging Face Space 的 `PORT` 环境变量
+- 在构建期显式创建运行用户 `hermes`，避免基础镜像差异导致启动阶段降权失败
 
 ## 持久化数据
 
