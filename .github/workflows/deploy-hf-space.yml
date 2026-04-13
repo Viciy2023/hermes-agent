@@ -1,0 +1,77 @@
+name: Deploy Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'huggingface/**'
+      - '.github/workflows/deploy-hf-space.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-hf-space-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required settings
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_REPO: ${{ vars.HF_SPACE_REPO }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "Missing required GitHub secret: HF_TOKEN"
+            exit 1
+          fi
+          if [ -z "${HF_SPACE_REPO:-}" ]; then
+            echo "Missing required GitHub variable: HF_SPACE_REPO"
+            echo "Example value: EmilyReed96989/Hermes-Agent"
+            exit 1
+          fi
+
+      - name: Clone Hugging Face Space repository
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_REPO: ${{ vars.HF_SPACE_REPO }}
+        run: |
+          set -euo pipefail
+          git clone "https://oauth2:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE_REPO}" hf-space
+
+      - name: Sync managed deployment files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p hf-space/huggingface
+          cp "huggingface/Dockerfile" "hf-space/Dockerfile"
+          cp "huggingface/entrypoint.sh" "hf-space/huggingface/entrypoint.sh"
+          cp "huggingface/config.space.yaml" "hf-space/huggingface/config.space.yaml"
+          cp "huggingface/.env.space.example" "hf-space/huggingface/.env.space.example"
+          cp "huggingface/README.md" "hf-space/huggingface/README.md"
+          chmod +x "hf-space/huggingface/entrypoint.sh"
+
+      - name: Commit and push changes to Hugging Face Space
+        shell: bash
+        working-directory: hf-space
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Dockerfile huggingface/entrypoint.sh huggingface/config.space.yaml huggingface/.env.space.example huggingface/README.md
+          if git diff --cached --quiet; then
+            echo "No Hugging Face deployment changes to push."
+            exit 0
+          fi
+          git commit -m "Deploy Hugging Face Space from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          git push origin HEAD:main
