@@ -28,6 +28,8 @@ COPY --chmod=0755 --from=uv_source /usr/local/bin/uv /usr/local/bin/uvx /usr/loc
 
 RUN git clone --depth 1 --branch ${HERMES_REF} ${HERMES_REPO} /opt/hermes
 COPY huggingface/entrypoint.sh /opt/hermes/huggingface/entrypoint.sh
+COPY huggingface/__init__.py /opt/hermes/huggingface/__init__.py
+COPY huggingface/runtime_state.py /opt/hermes/huggingface/runtime_state.py
 COPY huggingface/config.space.yaml /opt/hermes/huggingface/config.space.yaml
 COPY huggingface/.env.space.example /opt/hermes/huggingface/.env.space.example
 COPY huggingface/README.md /opt/hermes/huggingface/README.md
