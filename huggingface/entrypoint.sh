@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e
-shopt -s nullglob
 
 PERSIST_HOME_RAW="${HERMES_HOME:-/data}"
 PERSIST_HOME="$(printf '%s' "$PERSIST_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -9,87 +8,25 @@ RUNTIME_HOME="$(printf '%s' "$RUNTIME_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:sp
 PERSIST_SYNC_SECONDS="${HERMES_PERSIST_SYNC_SECONDS:-120}"
 INSTALL_DIR="/opt/hermes"
 
-sync_file_if_present() {
-    local src="$1"
-    local dest="$2"
-    if [ -f "$src" ]; then
-        mkdir -p "$(dirname "$dest")"
-        cp -f "$src" "$dest"
-    fi
-}
+sync_bidirectional_state() {
+    python3 - <<'PY'
+import os
+from pathlib import Path
 
-sync_dir_contents() {
-    local src="$1"
-    local dest="$2"
-    if [ -d "$src" ]; then
-        mkdir -p "$dest"
-        cp -a "$src"/. "$dest"/
-    fi
-}
+from huggingface.runtime_state import apply_sync_actions, plan_bidirectional_sync
 
-sync_weixin_persist_to_runtime() {
-    local persist_accounts="$PERSIST_HOME/weixin/accounts"
-    local runtime_accounts="$RUNTIME_HOME/weixin/accounts"
-    mkdir -p "$runtime_accounts"
-    for file in "$persist_accounts"/*.json; do
-        [ -f "$file" ] || continue
-        cp -f "$file" "$runtime_accounts/$(basename "$file")"
-    done
-}
-
-sync_weixin_runtime_to_persist() {
-    local persist_accounts="$PERSIST_HOME/weixin/accounts"
-    local runtime_accounts="$RUNTIME_HOME/weixin/accounts"
-    mkdir -p "$persist_accounts"
-    for file in "$runtime_accounts"/*.json; do
-        [ -f "$file" ] || continue
-        case "$(basename "$file")" in
-            *.sync.json|*.context-tokens.json)
-                continue
-                ;;
-        esac
-        cp -f "$file" "$persist_accounts/$(basename "$file")"
-    done
-}
-
-sync_persist_to_runtime() {
-    sync_file_if_present "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
-    sync_file_if_present "$PERSIST_HOME/config.yaml" "$RUNTIME_HOME/config.yaml"
-    sync_file_if_present "$PERSIST_HOME/SOUL.md" "$RUNTIME_HOME/SOUL.md"
-    sync_file_if_present "$PERSIST_HOME/state.db" "$RUNTIME_HOME/state.db"
-    sync_dir_contents "$PERSIST_HOME/sessions" "$RUNTIME_HOME/sessions"
-    sync_dir_contents "$PERSIST_HOME/memories" "$RUNTIME_HOME/memories"
-    sync_dir_contents "$PERSIST_HOME/skills" "$RUNTIME_HOME/skills"
-    sync_dir_contents "$PERSIST_HOME/cron" "$RUNTIME_HOME/cron"
-    sync_dir_contents "$PERSIST_HOME/home" "$RUNTIME_HOME/home"
-    sync_dir_contents "$PERSIST_HOME/hooks" "$RUNTIME_HOME/hooks"
-    sync_dir_contents "$PERSIST_HOME/skins" "$RUNTIME_HOME/skins"
-    sync_dir_contents "$PERSIST_HOME/plans" "$RUNTIME_HOME/plans"
-    sync_dir_contents "$PERSIST_HOME/workspace" "$RUNTIME_HOME/workspace"
-    sync_weixin_persist_to_runtime
-}
-
-sync_runtime_to_persist() {
-    sync_file_if_present "$RUNTIME_HOME/.env" "$PERSIST_HOME/.env"
-    sync_file_if_present "$RUNTIME_HOME/config.yaml" "$PERSIST_HOME/config.yaml"
-    sync_file_if_present "$RUNTIME_HOME/SOUL.md" "$PERSIST_HOME/SOUL.md"
-    sync_file_if_present "$RUNTIME_HOME/state.db" "$PERSIST_HOME/state.db"
-    sync_dir_contents "$RUNTIME_HOME/sessions" "$PERSIST_HOME/sessions"
-    sync_dir_contents "$RUNTIME_HOME/memories" "$PERSIST_HOME/memories"
-    sync_dir_contents "$RUNTIME_HOME/skills" "$PERSIST_HOME/skills"
-    sync_dir_contents "$RUNTIME_HOME/cron" "$PERSIST_HOME/cron"
-    sync_dir_contents "$RUNTIME_HOME/home" "$PERSIST_HOME/home"
-    sync_dir_contents "$RUNTIME_HOME/hooks" "$PERSIST_HOME/hooks"
-    sync_dir_contents "$RUNTIME_HOME/skins" "$PERSIST_HOME/skins"
-    sync_dir_contents "$RUNTIME_HOME/plans" "$PERSIST_HOME/plans"
-    sync_dir_contents "$RUNTIME_HOME/workspace" "$PERSIST_HOME/workspace"
-    sync_weixin_runtime_to_persist
+runtime_root = Path(os.environ["RUNTIME_HOME"])
+persist_root = Path(os.environ["PERSIST_HOME"])
+actions = plan_bidirectional_sync(runtime_root, persist_root)
+if actions:
+    apply_sync_actions(runtime_root, persist_root, actions)
+PY
 }
 
 start_persist_sync_loop() {
     while true; do
         sleep "$PERSIST_SYNC_SECONDS"
-        sync_runtime_to_persist || true
+        sync_bidirectional_state || true
     done
 }
 
@@ -98,6 +35,7 @@ mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"
 source "${INSTALL_DIR}/.venv/bin/activate"
 export HERMES_PERSIST_HOME="$PERSIST_HOME"
 export HERMES_HOME="$RUNTIME_HOME"
+export PERSIST_HOME RUNTIME_HOME INSTALL_DIR
 
 mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
 
@@ -113,7 +51,7 @@ if [ ! -f "$PERSIST_HOME/SOUL.md" ]; then
     cp "$INSTALL_DIR/docker/SOUL.md" "$PERSIST_HOME/SOUL.md"
 fi
 
-sync_persist_to_runtime
+sync_bidirectional_state
 
 if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
@@ -131,6 +69,7 @@ import sys
 
 from gateway.platforms.weixin import check_weixin_requirements, qr_login
 from hermes_cli.config import save_env_value, get_env_value
+from huggingface.runtime_state import should_run_weixin_qr_login, validate_weixin_credentials
 
 
 def truthy(value: str | None, default: bool = False) -> bool:
@@ -142,32 +81,40 @@ def truthy(value: str | None, default: bool = False) -> bool:
     return normalized in {"1", "true", "yes", "on"}
 
 
-intent_keys = [
+env_values = {key: get_env_value(key) or os.getenv(key) for key in [
+    "WEIXIN_ENABLED",
+    "WEIXIN_AUTO_QR_LOGIN",
+    "WEIXIN_ACCOUNT_ID",
+    "WEIXIN_TOKEN",
+    "WEIXIN_BASE_URL",
+    "WEIXIN_CDN_BASE_URL",
     "WEIXIN_DM_POLICY",
     "WEIXIN_GROUP_POLICY",
     "WEIXIN_ALLOWED_USERS",
     "WEIXIN_GROUP_ALLOWED_USERS",
     "WEIXIN_HOME_CHANNEL",
     "WEIXIN_HOME_CHANNEL_NAME",
-    "WEIXIN_BASE_URL",
-    "WEIXIN_CDN_BASE_URL",
     "WEIXIN_ALLOW_ALL_USERS",
-]
+]}
 
-weixin_requested = truthy(os.getenv("WEIXIN_ENABLED"), False) or any(get_env_value(key) for key in intent_keys)
-auto_qr_enabled = truthy(os.getenv("WEIXIN_AUTO_QR_LOGIN"), True)
-account_id = get_env_value("WEIXIN_ACCOUNT_ID") or ""
-token = get_env_value("WEIXIN_TOKEN") or ""
+should_run_qr, reason = asyncio.run(
+    should_run_weixin_qr_login(env_values, validate_weixin_credentials)
+)
 
-if not weixin_requested:
+if reason == "not_requested":
     sys.exit(0)
 
-if account_id and token:
-    print("Weixin bootstrap: existing credentials detected, skipping QR login.")
+if not should_run_qr and reason == "valid_credentials":
+    print("Weixin bootstrap: existing credentials detected and validated, skipping QR login.")
     sys.exit(0)
 
-if not auto_qr_enabled:
-    print("Weixin bootstrap: WEIXIN_AUTO_QR_LOGIN is disabled and credentials are missing.")
+if not should_run_qr:
+    if reason == "invalid_credentials_auto_qr_disabled":
+        print("Weixin bootstrap: saved credentials are invalid and WEIXIN_AUTO_QR_LOGIN is disabled.")
+    elif reason == "missing_credentials_auto_qr_disabled":
+        print("Weixin bootstrap: WEIXIN_AUTO_QR_LOGIN is disabled and credentials are missing.")
+    else:
+        print(f"Weixin bootstrap skipped: {reason}")
     sys.exit(1)
 
 if not check_weixin_requirements():
@@ -202,7 +149,17 @@ if truthy(os.getenv("WEIXIN_AUTO_SET_HOME_CHANNEL"), True) and user_id and not g
 print(f"Weixin bootstrap succeeded: credentials were saved to {hermes_home}/.env.")
 PY
 
-cp "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
+python3 - <<'PY'
+import os
+from pathlib import Path
+import shutil
+
+persist_env = Path(os.environ["PERSIST_HOME"]) / ".env"
+runtime_env = Path(os.environ["RUNTIME_HOME"]) / ".env"
+if persist_env.exists():
+    runtime_env.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(persist_env, runtime_env)
+PY
 
 # Sync process-level model overrides into /data/config.yaml so the gateway and
 # background tasks use the same effective provider/model after restarts.
@@ -283,7 +240,7 @@ export API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
 export API_SERVER_PORT="${API_SERVER_PORT:-${PORT:-7860}}"
 export API_SERVER_MODEL_NAME="${API_SERVER_MODEL_NAME:-Hermes-Agent}"
 
-sync_persist_to_runtime
+sync_bidirectional_state
 
 export HERMES_HOME="$RUNTIME_HOME"
 
@@ -299,6 +256,6 @@ if ! wait "$MAIN_PID"; then
 fi
 
 kill "$SYNC_PID" 2>/dev/null || true
-sync_runtime_to_persist || true
+sync_bidirectional_state || true
 
 exit "$STATUS"
