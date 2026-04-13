@@ -1,7 +1,7 @@
 FROM ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b AS uv_source
 FROM debian:13.4
 
-ARG HERMES_REPO=https://github.com/Viciy2023/hermes-agent.git
+ARG HERMES_REPO=https://github.com/NousResearch/hermes-agent.git
 ARG HERMES_REF=main
 
 ENV PYTHONUNBUFFERED=1 \
@@ -33,8 +33,6 @@ COPY huggingface/ /tmp/huggingface/
 RUN git clone --depth 1 --branch ${HERMES_REF} ${HERMES_REPO} /opt/hermes
 RUN mkdir -p /opt/hermes/huggingface && \
     cp /tmp/huggingface/entrypoint.sh /opt/hermes/huggingface/entrypoint.sh && \
-    cp /tmp/huggingface/__init__.py /opt/hermes/huggingface/__init__.py && \
-    cp /tmp/huggingface/runtime_state.py /opt/hermes/huggingface/runtime_state.py && \
     cp /tmp/huggingface/config.space.yaml /opt/hermes/huggingface/config.space.yaml && \
     cp /tmp/huggingface/.env.space.example /opt/hermes/huggingface/.env.space.example && \
     cp /tmp/huggingface/README.md /opt/hermes/huggingface/README.md
