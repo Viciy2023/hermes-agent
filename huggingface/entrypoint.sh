@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-HERMES_HOME_RAW="${HERMES_HOME:-/data}"
-HERMES_HOME="$(printf '%s' "$HERMES_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+PERSIST_HOME_RAW="${HERMES_HOME:-/data}"
+PERSIST_HOME="$(printf '%s' "$PERSIST_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+RUNTIME_HOME_RAW="${HERMES_RUNTIME_HOME:-/tmp/hermes-runtime}"
+RUNTIME_HOME="$(printf '%s' "$RUNTIME_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 INSTALL_DIR="/opt/hermes"
 
 if [ "$(id -u)" = "0" ]; then
@@ -16,13 +18,14 @@ if [ "$(id -u)" = "0" ]; then
         groupmod -g "$HERMES_GID" hermes
     fi
 
-    if [ -d "$HERMES_HOME" ]; then
-        actual_hermes_uid=$(id -u hermes)
-        if [ "$(stat -c %u "$HERMES_HOME" 2>/dev/null)" != "$actual_hermes_uid" ]; then
-            echo "$HERMES_HOME is not owned by $actual_hermes_uid, fixing"
-            chown -R hermes:hermes "$HERMES_HOME"
+    actual_hermes_uid=$(id -u hermes)
+    for target_dir in "$PERSIST_HOME" "$RUNTIME_HOME"; do
+        mkdir -p "$target_dir"
+        if [ "$(stat -c %u "$target_dir" 2>/dev/null)" != "$actual_hermes_uid" ]; then
+            echo "$target_dir is not owned by $actual_hermes_uid, fixing"
+            chown -R hermes:hermes "$target_dir"
         fi
-    fi
+    done
 
     echo "Dropping root privileges"
     if command -v gosu >/dev/null 2>&1; then
@@ -42,21 +45,26 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 source "${INSTALL_DIR}/.venv/bin/activate"
-export HERMES_HOME
+export HERMES_PERSIST_HOME="$PERSIST_HOME"
+export HERMES_HOME="$RUNTIME_HOME"
 
-mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
+mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
 
-if [ ! -f "$HERMES_HOME/.env" ]; then
-    cp "$INSTALL_DIR/huggingface/.env.space.example" "$HERMES_HOME/.env"
+if [ ! -f "$PERSIST_HOME/.env" ]; then
+    cp "$INSTALL_DIR/huggingface/.env.space.example" "$PERSIST_HOME/.env"
 fi
 
-if [ ! -f "$HERMES_HOME/config.yaml" ]; then
-    cp "$INSTALL_DIR/huggingface/config.space.yaml" "$HERMES_HOME/config.yaml"
+if [ ! -f "$PERSIST_HOME/config.yaml" ]; then
+    cp "$INSTALL_DIR/huggingface/config.space.yaml" "$PERSIST_HOME/config.yaml"
 fi
 
-if [ ! -f "$HERMES_HOME/SOUL.md" ]; then
-    cp "$INSTALL_DIR/docker/SOUL.md" "$HERMES_HOME/SOUL.md"
+if [ ! -f "$PERSIST_HOME/SOUL.md" ]; then
+    cp "$INSTALL_DIR/docker/SOUL.md" "$PERSIST_HOME/SOUL.md"
 fi
+
+cp "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
+cp "$PERSIST_HOME/config.yaml" "$RUNTIME_HOME/config.yaml"
+cp "$PERSIST_HOME/SOUL.md" "$RUNTIME_HOME/SOUL.md"
 
 if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
@@ -141,7 +149,7 @@ if truthy(os.getenv("WEIXIN_AUTO_SET_HOME_CHANNEL"), True) and user_id and not g
     save_env_value("WEIXIN_HOME_CHANNEL", user_id)
     save_env_value("WEIXIN_HOME_CHANNEL_NAME", get_env_value("WEIXIN_HOME_CHANNEL_NAME") or "Home")
 
-print("Weixin bootstrap succeeded: credentials were saved to /data/.env.")
+print(f"Weixin bootstrap succeeded: credentials were saved to {hermes_home}/.env.")
 PY
 
 # Sync process-level model overrides into /data/config.yaml so the gateway and
@@ -164,6 +172,8 @@ PRIMARY_CUSTOM_ENDPOINT_URL="${CUSTOM_OPENAI_BASE_URL:-${OPENAI_BASE_URL:-}}"
 SECONDARY_CUSTOM_ENDPOINT_URL="${SECONDARY_CUSTOM_OPENAI_BASE_URL:-${SECONDARY_OPENAI_BASE_URL:-}}"
 SELECTED_CUSTOM_ENDPOINT_URL="$PRIMARY_CUSTOM_ENDPOINT_URL"
 SELECTED_MODEL_NAME="${HERMES_MODEL:-}"
+
+export HERMES_HOME="$PERSIST_HOME"
 
 if [ "$ACTIVE_CUSTOM_MODEL" = "secondary" ]; then
     SELECTED_CUSTOM_ENDPOINT_URL="$SECONDARY_CUSTOM_ENDPOINT_URL"
@@ -220,5 +230,11 @@ export API_SERVER_ENABLED="${API_SERVER_ENABLED:-true}"
 export API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
 export API_SERVER_PORT="${API_SERVER_PORT:-${PORT:-7860}}"
 export API_SERVER_MODEL_NAME="${API_SERVER_MODEL_NAME:-Hermes-Agent}"
+
+cp "$PERSIST_HOME/.env" "$RUNTIME_HOME/.env"
+cp "$PERSIST_HOME/config.yaml" "$RUNTIME_HOME/config.yaml"
+cp "$PERSIST_HOME/SOUL.md" "$RUNTIME_HOME/SOUL.md"
+
+export HERMES_HOME="$RUNTIME_HOME"
 
 exec hermes gateway run
