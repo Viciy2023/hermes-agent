@@ -34,7 +34,6 @@ RUN chown -R hermes:hermes /opt/hermes
 USER hermes
 
 RUN uv venv /opt/hermes/.venv && \
-    /opt/hermes/.venv/bin/python -m pip install --upgrade pip && \
     uv pip install --python /opt/hermes/.venv/bin/python --no-cache-dir -e ".[all]"
 
 USER root
