@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-HERMES_HOME="${HERMES_HOME:-/data}"
+HERMES_HOME_RAW="${HERMES_HOME:-/data}"
+HERMES_HOME="$(printf '%s' "$HERMES_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 INSTALL_DIR="/opt/hermes"
 
 if [ "$(id -u)" = "0" ]; then
