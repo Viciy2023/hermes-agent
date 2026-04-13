@@ -123,7 +123,14 @@ start_persist_sync_loop() {
 
 mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"
 
-source "${INSTALL_DIR}/.venv/bin/activate"
+# Official image layouts may not expose the source-build virtualenv path.
+# Activate it when present, otherwise rely on the image's default PATH.
+if [ -f "${INSTALL_DIR}/.venv/bin/activate" ]; then
+    source "${INSTALL_DIR}/.venv/bin/activate"
+elif [ -f "${INSTALL_DIR}/venv/bin/activate" ]; then
+    source "${INSTALL_DIR}/venv/bin/activate"
+fi
+
 export HERMES_PERSIST_HOME="$PERSIST_HOME"
 export HERMES_HOME="$RUNTIME_HOME"
 export PERSIST_HOME RUNTIME_HOME INSTALL_DIR
