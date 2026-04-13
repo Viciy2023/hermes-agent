@@ -24,7 +24,20 @@ if [ "$(id -u)" = "0" ]; then
     fi
 
     echo "Dropping root privileges"
-    exec gosu hermes "$0" "$@"
+    if command -v gosu >/dev/null 2>&1; then
+        exec gosu hermes "$0" "$@"
+    fi
+
+    if command -v runuser >/dev/null 2>&1; then
+        exec runuser -u hermes -- "$0" "$@"
+    fi
+
+    if command -v su >/dev/null 2>&1; then
+        exec su -m -s /bin/bash hermes -c 'exec "$0" "$@"' -- "$0" "$@"
+    fi
+
+    echo "Failed to drop root privileges: gosu, runuser, and su are all unavailable" >&2
+    exit 1
 fi
 
 source "${INSTALL_DIR}/.venv/bin/activate"
