@@ -93,42 +93,7 @@ start_persist_sync_loop() {
     done
 }
 
-if [ "$(id -u)" = "0" ]; then
-    if [ -n "$HERMES_UID" ] && [ "$HERMES_UID" != "$(id -u hermes)" ]; then
-        echo "Changing hermes UID to $HERMES_UID"
-        usermod -u "$HERMES_UID" hermes
-    fi
-
-    if [ -n "$HERMES_GID" ] && [ "$HERMES_GID" != "$(id -g hermes)" ]; then
-        echo "Changing hermes GID to $HERMES_GID"
-        groupmod -g "$HERMES_GID" hermes
-    fi
-
-    actual_hermes_uid=$(id -u hermes)
-    for target_dir in "$PERSIST_HOME" "$RUNTIME_HOME"; do
-        mkdir -p "$target_dir"
-        if [ "$(stat -c %u "$target_dir" 2>/dev/null)" != "$actual_hermes_uid" ]; then
-            echo "$target_dir is not owned by $actual_hermes_uid, fixing"
-            chown -R hermes:hermes "$target_dir"
-        fi
-    done
-
-    echo "Dropping root privileges"
-    if command -v gosu >/dev/null 2>&1; then
-        exec gosu hermes "$0" "$@"
-    fi
-
-    if command -v runuser >/dev/null 2>&1; then
-        exec runuser -u hermes -- "$0" "$@"
-    fi
-
-    if command -v su >/dev/null 2>&1; then
-        exec su -m -s /bin/bash hermes -c 'exec "$0" "$@"' -- "$0" "$@"
-    fi
-
-    echo "Failed to drop root privileges: gosu, runuser, and su are all unavailable" >&2
-    exit 1
-fi
+mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"
 
 source "${INSTALL_DIR}/.venv/bin/activate"
 export HERMES_PERSIST_HOME="$PERSIST_HOME"
