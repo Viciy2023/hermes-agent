@@ -3,6 +3,9 @@ model:
   default: "Qwen/qwen-max-latest"
   base_url: ""
 
+display:
+  skin: "default"
+
 terminal:
   backend: "local"
   cwd: "."
