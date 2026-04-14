@@ -170,6 +170,19 @@ start_persist_sync_loop() {
     done
 }
 
+start_log_forwarder() {
+    local log_dir="$RUNTIME_HOME/logs"
+    mkdir -p "$log_dir"
+
+    local gateway_log="$log_dir/gateway.log"
+    local errors_log="$log_dir/errors.log"
+    : > "$gateway_log"
+    : > "$errors_log"
+
+    tail -n 0 -F "$gateway_log" "$errors_log" 2>/dev/null &
+    LOG_TAIL_PID=$!
+}
+
 mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"
 
 ACTIVATE_PATH=""
@@ -480,6 +493,7 @@ export API_SERVER_MODEL_NAME="${API_SERVER_MODEL_NAME:-Hermes-Agent}"
 
 sync_all_batches_to_persist
 
+start_log_forwarder
 start_persist_sync_loop &
 SYNC_PID=$!
 
@@ -492,6 +506,7 @@ if ! wait "$MAIN_PID"; then
 fi
 
 kill "$SYNC_PID" 2>/dev/null || true
+kill "${LOG_TAIL_PID:-}" 2>/dev/null || true
 sync_all_batches_to_persist || true
 
 exit "$STATUS"
