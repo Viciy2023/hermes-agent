@@ -55,6 +55,7 @@ jobs:
           set -euo pipefail
           mkdir -p hf-space/huggingface
           cp "huggingface/Dockerfile" "hf-space/Dockerfile"
+          cp "huggingface/README.space.md" "hf-space/README.md"
           cp "huggingface/entrypoint.sh" "hf-space/huggingface/entrypoint.sh"
           cp "huggingface/config.space.yaml" "hf-space/huggingface/config.space.yaml"
           cp "huggingface/.env.space.example" "hf-space/huggingface/.env.space.example"
@@ -68,7 +69,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Dockerfile huggingface/entrypoint.sh huggingface/config.space.yaml huggingface/.env.space.example huggingface/README.md
+          git add README.md Dockerfile huggingface/entrypoint.sh huggingface/config.space.yaml huggingface/.env.space.example huggingface/README.md
           if git diff --cached --quiet; then
             echo "No Hugging Face deployment changes to push."
             exit 0
