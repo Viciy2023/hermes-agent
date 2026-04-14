@@ -39,9 +39,11 @@ copy_file_to_target() {
     local rel_path="$3"
     local src="$src_root/$rel_path"
     local dest="$dest_root/$rel_path"
+
     if [ ! -f "$src" ]; then
         return 0
     fi
+
     mkdir -p "$(dirname "$dest")"
     cp -f "$src" "$dest" 2>/dev/null || true
 }
@@ -51,6 +53,7 @@ copy_tree_to_target() {
     local dest_root="$2"
     local rel_dir="$3"
     local src_dir="$src_root/$rel_dir"
+
     if [ ! -d "$src_dir" ]; then
         return 0
     fi
@@ -68,6 +71,7 @@ copy_tree_to_target() {
 
 restore_runtime_from_persist() {
     local item
+
     for item in "${SYNC_CONFIG_BATCH[@]}"; do
         if [ -d "$PERSIST_HOME/$item" ]; then
             copy_tree_to_target "$PERSIST_HOME" "$RUNTIME_HOME" "$item"
@@ -84,6 +88,7 @@ restore_runtime_from_persist() {
 sync_batch_to_persist() {
     local batch_name="$1"
     local item
+
     if [ "$batch_name" = "config" ]; then
         for item in "${SYNC_CONFIG_BATCH[@]}"; do
             if [ -d "$RUNTIME_HOME/$item" ]; then
@@ -100,6 +105,7 @@ sync_batch_to_persist() {
 
 sync_all_batches_to_persist() {
     local item
+
     sync_batch_to_persist "config"
     for item in "${SYNC_DIR_BATCHES[@]}"; do
         sync_batch_to_persist "$item"
@@ -109,6 +115,7 @@ sync_all_batches_to_persist() {
 start_persist_sync_loop() {
     local batch_index=0
     local total_batches=$((1 + ${#SYNC_DIR_BATCHES[@]}))
+
     while true; do
         sleep "$PERSIST_SYNC_SECONDS"
         if [ "$batch_index" -eq 0 ]; then
@@ -122,8 +129,6 @@ start_persist_sync_loop() {
 
 mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"
 
-# Official image layouts may not expose the source-build virtualenv path.
-# Activate it when present, otherwise rely on the image's default PATH.
 ACTIVATE_PATH=""
 if [ -f "${INSTALL_DIR}/.venv/bin/activate" ]; then
     ACTIVATE_PATH="${INSTALL_DIR}/.venv/bin/activate"
@@ -159,10 +164,6 @@ if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
 fi
 
-# Optional Weixin bootstrap for headless HF deployments.
-# If Weixin is requested and credentials are missing, print the QR login flow
-# into the Space logs, persist the returned credentials into /data/.env, then
-# continue to start the gateway.
 export HERMES_HOME="$PERSIST_HOME"
 python3 - <<'PY'
 import asyncio
@@ -172,7 +173,7 @@ import sys
 from pathlib import Path
 
 from gateway.platforms.weixin import check_weixin_requirements, qr_login
-from hermes_cli.config import save_env_value, get_env_value
+from hermes_cli.config import get_env_value, save_env_value
 
 
 def truthy(value: str | None, default: bool = False) -> bool:
@@ -248,21 +249,24 @@ def load_weixin_account_fallback(hermes_home: str, account_id_hint: str) -> dict
 
 
 hermes_home = os.getenv("HERMES_HOME", "/data")
-env_values = {key: get_env_value(key) or os.getenv(key) for key in [
-    "WEIXIN_ENABLED",
-    "WEIXIN_AUTO_QR_LOGIN",
-    "WEIXIN_ACCOUNT_ID",
-    "WEIXIN_TOKEN",
-    "WEIXIN_BASE_URL",
-    "WEIXIN_CDN_BASE_URL",
-    "WEIXIN_DM_POLICY",
-    "WEIXIN_GROUP_POLICY",
-    "WEIXIN_ALLOWED_USERS",
-    "WEIXIN_GROUP_ALLOWED_USERS",
-    "WEIXIN_HOME_CHANNEL",
-    "WEIXIN_HOME_CHANNEL_NAME",
-    "WEIXIN_ALLOW_ALL_USERS",
-]}
+env_values = {
+    key: get_env_value(key) or os.getenv(key)
+    for key in [
+        "WEIXIN_ENABLED",
+        "WEIXIN_AUTO_QR_LOGIN",
+        "WEIXIN_ACCOUNT_ID",
+        "WEIXIN_TOKEN",
+        "WEIXIN_BASE_URL",
+        "WEIXIN_CDN_BASE_URL",
+        "WEIXIN_DM_POLICY",
+        "WEIXIN_GROUP_POLICY",
+        "WEIXIN_ALLOWED_USERS",
+        "WEIXIN_GROUP_ALLOWED_USERS",
+        "WEIXIN_HOME_CHANNEL",
+        "WEIXIN_HOME_CHANNEL_NAME",
+        "WEIXIN_ALLOW_ALL_USERS",
+    ]
+}
 
 print(
     "Weixin bootstrap: env snapshot "
@@ -339,8 +343,8 @@ PY
 
 python3 - <<'PY'
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 persist_env = Path(os.environ["PERSIST_HOME"]) / ".env"
 runtime_env = Path(os.environ["RUNTIME_HOME"]) / ".env"
@@ -349,21 +353,6 @@ if persist_env.exists():
     shutil.copy2(persist_env, runtime_env)
 PY
 
-# Sync process-level model overrides into /data/config.yaml so the gateway and
-# background tasks use the same effective provider/model after restarts.
-#
-# Primary model variables (backward-compatible):
-#   CUSTOM_OPENAI_BASE_URL / OPENAI_BASE_URL
-#   HERMES_MODEL
-#   OPENAI_API_KEY / ANTHROPIC_API_KEY / ANTHROPIC_APILKEY
-#
-# Secondary model variables:
-#   SECONDARY_CUSTOM_OPENAI_BASE_URL / SECONDARY_OPENAI_BASE_URL
-#   SECONDARY_HERMES_MODEL
-#   SECONDARY_OPENAI_API_KEY / SECONDARY_ANTHROPIC_API_KEY / SECONDARY_ANTHROPIC_APILKEY
-#
-# Selector:
-#   ACTIVE_CUSTOM_MODEL=primary|secondary
 ACTIVE_CUSTOM_MODEL="${ACTIVE_CUSTOM_MODEL:-primary}"
 PRIMARY_CUSTOM_ENDPOINT_URL="${CUSTOM_OPENAI_BASE_URL:-${OPENAI_BASE_URL:-}}"
 SECONDARY_CUSTOM_ENDPOINT_URL="${SECONDARY_CUSTOM_OPENAI_BASE_URL:-${SECONDARY_OPENAI_BASE_URL:-}}"
@@ -388,7 +377,8 @@ fi
 if [ -n "$SELECTED_CUSTOM_ENDPOINT_URL" ]; then
     hermes config set model.provider "custom"
     hermes config set model.base_url "$SELECTED_CUSTOM_ENDPOINT_URL"
-elif [ -n "${HERMES_INFERENCE_PROVIDER:-}" ]; then
+fi
+if [ -z "$SELECTED_CUSTOM_ENDPOINT_URL" ] && [ -n "${HERMES_INFERENCE_PROVIDER:-}" ]; then
     hermes config set model.provider "$HERMES_INFERENCE_PROVIDER"
 fi
 
@@ -396,20 +386,21 @@ if [ -n "$SELECTED_MODEL_NAME" ]; then
     hermes config set model.default "$SELECTED_MODEL_NAME"
 fi
 
-# For custom OpenAI-compatible endpoints, Hermes naturally reads OPENAI_API_KEY.
-# Some upstream services ask users to provide ANTHROPIC_API_KEY instead, and
-# this deployment also tolerates the user's ANTHROPIC_APILKEY alias.
 if [ "$ACTIVE_CUSTOM_MODEL" = "secondary" ]; then
     if [ -z "${OPENAI_API_KEY:-}" ]; then
         if [ -n "${SECONDARY_OPENAI_API_KEY:-}" ]; then
             export OPENAI_API_KEY="$SECONDARY_OPENAI_API_KEY"
-        elif [ -n "${SECONDARY_ANTHROPIC_APILKEY:-}" ]; then
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${SECONDARY_ANTHROPIC_APILKEY:-}" ]; then
             export OPENAI_API_KEY="$SECONDARY_ANTHROPIC_APILKEY"
-        elif [ -n "${SECONDARY_ANTHROPIC_API_KEY:-}" ]; then
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${SECONDARY_ANTHROPIC_API_KEY:-}" ]; then
             export OPENAI_API_KEY="$SECONDARY_ANTHROPIC_API_KEY"
-        elif [ -n "${ANTHROPIC_APILKEY:-}" ]; then
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${ANTHROPIC_APILKEY:-}" ]; then
             export OPENAI_API_KEY="$ANTHROPIC_APILKEY"
-        elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${ANTHROPIC_API_KEY:-}" ]; then
             export OPENAI_API_KEY="$ANTHROPIC_API_KEY"
         fi
     fi
@@ -417,7 +408,8 @@ else
     if [ -z "${OPENAI_API_KEY:-}" ]; then
         if [ -n "${ANTHROPIC_APILKEY:-}" ]; then
             export OPENAI_API_KEY="$ANTHROPIC_APILKEY"
-        elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${ANTHROPIC_API_KEY:-}" ]; then
             export OPENAI_API_KEY="$ANTHROPIC_API_KEY"
         fi
     fi
