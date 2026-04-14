@@ -124,10 +124,15 @@ mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"
 
 # Official image layouts may not expose the source-build virtualenv path.
 # Activate it when present, otherwise rely on the image's default PATH.
+ACTIVATE_PATH=""
 if [ -f "${INSTALL_DIR}/.venv/bin/activate" ]; then
-    source "${INSTALL_DIR}/.venv/bin/activate"
-elif [ -f "${INSTALL_DIR}/venv/bin/activate" ]; then
-    source "${INSTALL_DIR}/venv/bin/activate"
+    ACTIVATE_PATH="${INSTALL_DIR}/.venv/bin/activate"
+fi
+if [ -z "$ACTIVATE_PATH" ] && [ -f "${INSTALL_DIR}/venv/bin/activate" ]; then
+    ACTIVATE_PATH="${INSTALL_DIR}/venv/bin/activate"
+fi
+if [ -n "$ACTIVATE_PATH" ]; then
+    source "$ACTIVATE_PATH"
 fi
 
 export HERMES_PERSIST_HOME="$PERSIST_HOME"
