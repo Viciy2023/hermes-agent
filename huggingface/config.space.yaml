@@ -1,6 +1,7 @@
+# HF Space runtime lives in /root/.hermes and syncs to the mounted bucket at /data.
 model:
   provider: "custom"
-  default: "Qwen/qwen-max-latest"
+  default: "qwen3.6-plus"
   base_url: ""
 
 display:

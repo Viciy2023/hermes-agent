@@ -60,3 +60,6 @@ mini-swe-agent/
 result
 website/static/api/skills-index.json
 huggingface/.env.space copy 2.example
+huggingface/构建日志.MD
+huggingface/运行日志.MD
+.claude/settings.json

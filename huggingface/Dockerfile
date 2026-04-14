@@ -7,7 +7,8 @@ ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright \
     TZ=Asia/Shanghai \
     HERMES_TIMEZONE=Asia/Shanghai \
-    HERMES_HOME=/data
+    HERMES_HOME=/root/.hermes \
+    HERMES_PERSIST_HOME=/data
 
 # Keep a source-build fallback reference available as build args, but default to
 # the official published image to reduce HF build cost.

@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-PERSIST_HOME_RAW="${HERMES_HOME:-/data}"
+PERSIST_HOME_RAW="${HERMES_PERSIST_HOME:-/data}"
 PERSIST_HOME="$(printf '%s' "$PERSIST_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-RUNTIME_HOME_RAW="${HERMES_RUNTIME_HOME:-/tmp/hermes-runtime}"
+RUNTIME_HOME_RAW="${HERMES_HOME:-/root/.hermes}"
 RUNTIME_HOME="$(printf '%s' "$RUNTIME_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 PERSIST_SYNC_SECONDS="${HERMES_PERSIST_SYNC_SECONDS:-300}"
 PERSIST_SYNC_BACKOFF_SECONDS="${HERMES_PERSIST_SYNC_BACKOFF_SECONDS:-1800}"
@@ -11,6 +11,11 @@ INSTALL_DIR="/opt/hermes"
 
 export TZ="${TZ:-Asia/Shanghai}"
 export HERMES_TIMEZONE="${HERMES_TIMEZONE:-Asia/Shanghai}"
+
+if [ "$PERSIST_HOME" = "$RUNTIME_HOME" ]; then
+    echo "HERMES_PERSIST_HOME and HERMES_HOME must be different in HF deployment" >&2
+    exit 1
+fi
 
 SYNC_CONFIG_BATCH=(
     ".env"
@@ -202,7 +207,6 @@ if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
 fi
 
-export HERMES_HOME="$PERSIST_HOME"
 python3 - <<'PY'
 import asyncio
 import json
@@ -286,7 +290,7 @@ def load_weixin_account_fallback(hermes_home: str, account_id_hint: str) -> dict
     return {}
 
 
-hermes_home = os.getenv("HERMES_HOME", "/data")
+hermes_home = os.getenv("HERMES_HOME", "/root/.hermes")
 env_values = {
     key: get_env_value(key) or os.getenv(key)
     for key in [
@@ -379,26 +383,12 @@ if truthy(os.getenv("WEIXIN_AUTO_SET_HOME_CHANNEL"), True) and user_id and not g
 print(f"Weixin bootstrap succeeded: credentials were saved to {hermes_home}/.env.")
 PY
 
-python3 - <<'PY'
-import os
-import shutil
-from pathlib import Path
-
-persist_env = Path(os.environ["PERSIST_HOME"]) / ".env"
-runtime_env = Path(os.environ["RUNTIME_HOME"]) / ".env"
-if persist_env.exists():
-    runtime_env.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(persist_env, runtime_env)
-PY
-
 ACTIVE_CUSTOM_MODEL="${ACTIVE_CUSTOM_MODEL:-primary}"
 PRIMARY_CUSTOM_ENDPOINT_URL="${CUSTOM_OPENAI_BASE_URL:-${OPENAI_BASE_URL:-}}"
 SECONDARY_CUSTOM_ENDPOINT_URL="${SECONDARY_CUSTOM_OPENAI_BASE_URL:-${SECONDARY_OPENAI_BASE_URL:-}}"
 THIRD_CUSTOM_ENDPOINT_URL="${THIRD_CUSTOM_OPENAI_BASE_URL:-${THIRD_OPENAI_BASE_URL:-}}"
 SELECTED_CUSTOM_ENDPOINT_URL="$PRIMARY_CUSTOM_ENDPOINT_URL"
 SELECTED_MODEL_NAME="${HERMES_MODEL:-}"
-
-export HERMES_HOME="$PERSIST_HOME"
 
 if [ "$ACTIVE_CUSTOM_MODEL" = "secondary" ]; then
     SELECTED_CUSTOM_ENDPOINT_URL="$SECONDARY_CUSTOM_ENDPOINT_URL"
@@ -489,8 +479,6 @@ export API_SERVER_PORT="${API_SERVER_PORT:-${PORT:-7860}}"
 export API_SERVER_MODEL_NAME="${API_SERVER_MODEL_NAME:-Hermes-Agent}"
 
 sync_all_batches_to_persist
-
-export HERMES_HOME="$RUNTIME_HOME"
 
 start_persist_sync_loop &
 SYNC_PID=$!
