@@ -391,6 +391,7 @@ PY
 ACTIVE_CUSTOM_MODEL="${ACTIVE_CUSTOM_MODEL:-primary}"
 PRIMARY_CUSTOM_ENDPOINT_URL="${CUSTOM_OPENAI_BASE_URL:-${OPENAI_BASE_URL:-}}"
 SECONDARY_CUSTOM_ENDPOINT_URL="${SECONDARY_CUSTOM_OPENAI_BASE_URL:-${SECONDARY_OPENAI_BASE_URL:-}}"
+THIRD_CUSTOM_ENDPOINT_URL="${THIRD_CUSTOM_OPENAI_BASE_URL:-${THIRD_OPENAI_BASE_URL:-}}"
 SELECTED_CUSTOM_ENDPOINT_URL="$PRIMARY_CUSTOM_ENDPOINT_URL"
 SELECTED_MODEL_NAME="${HERMES_MODEL:-}"
 
@@ -405,6 +406,18 @@ if [ "$ACTIVE_CUSTOM_MODEL" = "secondary" ]; then
     fi
     if [ -z "$SELECTED_MODEL_NAME" ]; then
         echo "ACTIVE_CUSTOM_MODEL=secondary but SECONDARY_HERMES_MODEL is not set"
+        exit 1
+    fi
+fi
+if [ "$ACTIVE_CUSTOM_MODEL" = "third" ]; then
+    SELECTED_CUSTOM_ENDPOINT_URL="$THIRD_CUSTOM_ENDPOINT_URL"
+    SELECTED_MODEL_NAME="${THIRD_HERMES_MODEL:-}"
+    if [ -z "$SELECTED_CUSTOM_ENDPOINT_URL" ]; then
+        echo "ACTIVE_CUSTOM_MODEL=third but THIRD_CUSTOM_OPENAI_BASE_URL/THIRD_OPENAI_BASE_URL is not set"
+        exit 1
+    fi
+    if [ -z "$SELECTED_MODEL_NAME" ]; then
+        echo "ACTIVE_CUSTOM_MODEL=third but THIRD_HERMES_MODEL is not set"
         exit 1
     fi
 fi
@@ -440,7 +453,24 @@ if [ "$ACTIVE_CUSTOM_MODEL" = "secondary" ]; then
         fi
     fi
 else
-    if [ -z "${OPENAI_API_KEY:-}" ]; then
+    if [ "$ACTIVE_CUSTOM_MODEL" = "third" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+        if [ -n "${THIRD_OPENAI_API_KEY:-}" ]; then
+            export OPENAI_API_KEY="$THIRD_OPENAI_API_KEY"
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${THIRD_ANTHROPIC_APILKEY:-}" ]; then
+            export OPENAI_API_KEY="$THIRD_ANTHROPIC_APILKEY"
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${THIRD_ANTHROPIC_API_KEY:-}" ]; then
+            export OPENAI_API_KEY="$THIRD_ANTHROPIC_API_KEY"
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${ANTHROPIC_APILKEY:-}" ]; then
+            export OPENAI_API_KEY="$ANTHROPIC_APILKEY"
+        fi
+        if [ -z "${OPENAI_API_KEY:-}" ] && [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            export OPENAI_API_KEY="$ANTHROPIC_API_KEY"
+        fi
+    fi
+    if [ "$ACTIVE_CUSTOM_MODEL" != "third" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
         if [ -n "${ANTHROPIC_APILKEY:-}" ]; then
             export OPENAI_API_KEY="$ANTHROPIC_APILKEY"
         fi
