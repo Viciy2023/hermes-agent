@@ -5,119 +5,118 @@ PERSIST_HOME_RAW="${HERMES_HOME:-/data}"
 PERSIST_HOME="$(printf '%s' "$PERSIST_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 RUNTIME_HOME_RAW="${HERMES_RUNTIME_HOME:-/tmp/hermes-runtime}"
 RUNTIME_HOME="$(printf '%s' "$RUNTIME_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-PERSIST_SYNC_SECONDS="${HERMES_PERSIST_SYNC_SECONDS:-120}"
+PERSIST_SYNC_SECONDS="${HERMES_PERSIST_SYNC_SECONDS:-300}"
 INSTALL_DIR="/opt/hermes"
 
-sync_bidirectional_state() {
-    python3 - <<'PY'
-import os
-import hashlib
-import shutil
-from pathlib import Path
-
-TRANSIENT_SUFFIXES = (
-    ".sync.json",
-    ".context-tokens.json",
-    ".tick.lock",
-    ".pyc",
-    ".pyo",
-    ".tmp",
-    ".temp",
+SYNC_CONFIG_BATCH=(".env" "config.yaml" "SOUL.md" "state.db" "weixin/accounts")
+SYNC_DIR_BATCHES=(
+    "sessions"
+    "memories"
+    "plans"
+    "cron"
+    "workspace"
+    "home"
+    "hooks"
+    "skins"
+    "optional-skills"
 )
-TRANSIENT_PARTS = {"__pycache__"}
 
+should_exclude_path() {
+    local rel_path="$1"
+    case "$rel_path" in
+        *__pycache__/*|*.pyc|*.tmp|*.temp|*.lock)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
-def should_skip(rel_path: str) -> bool:
-    parts = Path(rel_path).parts
-    if any(part in TRANSIENT_PARTS for part in parts):
-        return True
-    return rel_path.endswith(TRANSIENT_SUFFIXES)
+copy_file_to_target() {
+    local src_root="$1"
+    local dest_root="$2"
+    local rel_path="$3"
+    local src="$src_root/$rel_path"
+    local dest="$dest_root/$rel_path"
+    if [ ! -f "$src" ]; then
+        return 0
+    fi
+    mkdir -p "$(dirname "$dest")"
+    cp -f "$src" "$dest" 2>/dev/null || true
+}
 
+copy_tree_to_target() {
+    local src_root="$1"
+    local dest_root="$2"
+    local rel_dir="$3"
+    local src_dir="$src_root/$rel_dir"
+    if [ ! -d "$src_dir" ]; then
+        return 0
+    fi
 
-def iter_files(root: Path) -> list[str]:
-    if not root.exists():
-        return []
-    rel_paths = []
-    for path in root.rglob("*"):
-        if not path.is_file():
+    while IFS= read -r -d '' src_path; do
+        local rel_path="${src_path#${src_root}/}"
+        if should_exclude_path "$rel_path"; then
             continue
-        rel_path = path.relative_to(root).as_posix()
-        if should_skip(rel_path):
-            continue
-        rel_paths.append(rel_path)
-    return sorted(rel_paths)
+        fi
+        local dest_path="$dest_root/$rel_path"
+        mkdir -p "$(dirname "$dest_path")"
+        cp -f "$src_path" "$dest_path" 2>/dev/null || true
+    done < <(find "$src_dir" -type f -print0)
+}
 
+restore_runtime_from_persist() {
+    local item
+    for item in "${SYNC_CONFIG_BATCH[@]}"; do
+        if [ -d "$PERSIST_HOME/$item" ]; then
+            copy_tree_to_target "$PERSIST_HOME" "$RUNTIME_HOME" "$item"
+        else
+            copy_file_to_target "$PERSIST_HOME" "$RUNTIME_HOME" "$item"
+        fi
+    done
 
-def file_signature(path: Path) -> tuple[int, int]:
-    stat = path.stat()
-    return stat.st_mtime_ns, stat.st_size
+    for item in "${SYNC_DIR_BATCHES[@]}"; do
+        copy_tree_to_target "$PERSIST_HOME" "$RUNTIME_HOME" "$item"
+    done
+}
 
+sync_batch_to_persist() {
+    local batch_name="$1"
+    local item
+    if [ "$batch_name" = "config" ]; then
+        for item in "${SYNC_CONFIG_BATCH[@]}"; do
+            if [ -d "$RUNTIME_HOME/$item" ]; then
+                copy_tree_to_target "$RUNTIME_HOME" "$PERSIST_HOME" "$item"
+            else
+                copy_file_to_target "$RUNTIME_HOME" "$PERSIST_HOME" "$item"
+            fi
+        done
+        return 0
+    fi
 
-def hash_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    copy_tree_to_target "$RUNTIME_HOME" "$PERSIST_HOME" "$batch_name"
+}
 
-
-def plan_bidirectional_sync(runtime_root: Path, persist_root: Path) -> list[tuple[str, str]]:
-    runtime_files = {rel_path: runtime_root / rel_path for rel_path in iter_files(runtime_root)}
-    persist_files = {rel_path: persist_root / rel_path for rel_path in iter_files(persist_root)}
-    actions = []
-
-    for rel_path in sorted(set(runtime_files) | set(persist_files)):
-        runtime_path = runtime_files.get(rel_path)
-        persist_path = persist_files.get(rel_path)
-
-        if runtime_path and not persist_path:
-            actions.append(("runtime_to_persist", rel_path))
-            continue
-        if persist_path and not runtime_path:
-            actions.append(("persist_to_runtime", rel_path))
-            continue
-        if not runtime_path or not persist_path:
-            continue
-
-        runtime_sig = file_signature(runtime_path)
-        persist_sig = file_signature(persist_path)
-        if runtime_sig == persist_sig and hash_file(runtime_path) == hash_file(persist_path):
-            continue
-        if runtime_sig[0] > persist_sig[0]:
-            actions.append(("runtime_to_persist", rel_path))
-            continue
-        if persist_sig[0] > runtime_sig[0]:
-            actions.append(("persist_to_runtime", rel_path))
-            continue
-        if hash_file(runtime_path) != hash_file(persist_path):
-            actions.append(("runtime_to_persist", rel_path))
-
-    return actions
-
-
-def apply_sync_actions(runtime_root: Path, persist_root: Path, actions: list[tuple[str, str]]) -> None:
-    for direction, rel_path in actions:
-        if direction == "runtime_to_persist":
-            src = runtime_root / rel_path
-            dest = persist_root / rel_path
-        else:
-            src = persist_root / rel_path
-            dest = runtime_root / rel_path
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
-
-runtime_root = Path(os.environ["RUNTIME_HOME"])
-persist_root = Path(os.environ["PERSIST_HOME"])
-actions = plan_bidirectional_sync(runtime_root, persist_root)
-if actions:
-    apply_sync_actions(runtime_root, persist_root, actions)
-PY
+sync_all_batches_to_persist() {
+    local item
+    sync_batch_to_persist "config"
+    for item in "${SYNC_DIR_BATCHES[@]}"; do
+        sync_batch_to_persist "$item"
+    done
 }
 
 start_persist_sync_loop() {
+    local batch_index=0
+    local total_batches=$((1 + ${#SYNC_DIR_BATCHES[@]}))
     while true; do
         sleep "$PERSIST_SYNC_SECONDS"
-        sync_bidirectional_state || true
+        if [ "$batch_index" -eq 0 ]; then
+            sync_batch_to_persist "config"
+        else
+            sync_batch_to_persist "${SYNC_DIR_BATCHES[$((batch_index - 1))]}"
+        fi
+        batch_index=$(((batch_index + 1) % total_batches))
     done
 }
 
@@ -135,7 +134,7 @@ export HERMES_PERSIST_HOME="$PERSIST_HOME"
 export HERMES_HOME="$RUNTIME_HOME"
 export PERSIST_HOME RUNTIME_HOME INSTALL_DIR
 
-mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
+mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home,optional-skills,weixin/accounts}
 
 if [ ! -f "$PERSIST_HOME/.env" ]; then
     cp "$INSTALL_DIR/huggingface/.env.space.example" "$PERSIST_HOME/.env"
@@ -149,7 +148,7 @@ if [ ! -f "$PERSIST_HOME/SOUL.md" ]; then
     cp "$INSTALL_DIR/docker/SOUL.md" "$PERSIST_HOME/SOUL.md"
 fi
 
-sync_bidirectional_state
+restore_runtime_from_persist
 
 if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
@@ -424,7 +423,7 @@ export API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
 export API_SERVER_PORT="${API_SERVER_PORT:-${PORT:-7860}}"
 export API_SERVER_MODEL_NAME="${API_SERVER_MODEL_NAME:-Hermes-Agent}"
 
-sync_bidirectional_state
+sync_all_batches_to_persist
 
 export HERMES_HOME="$RUNTIME_HOME"
 
@@ -440,6 +439,6 @@ if ! wait "$MAIN_PID"; then
 fi
 
 kill "$SYNC_PID" 2>/dev/null || true
-sync_bidirectional_state || true
+sync_all_batches_to_persist || true
 
 exit "$STATUS"
