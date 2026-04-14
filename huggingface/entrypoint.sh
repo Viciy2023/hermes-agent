@@ -6,6 +6,7 @@ PERSIST_HOME="$(printf '%s' "$PERSIST_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:sp
 RUNTIME_HOME_RAW="${HERMES_RUNTIME_HOME:-/tmp/hermes-runtime}"
 RUNTIME_HOME="$(printf '%s' "$RUNTIME_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 PERSIST_SYNC_SECONDS="${HERMES_PERSIST_SYNC_SECONDS:-300}"
+PERSIST_SYNC_BACKOFF_SECONDS="${HERMES_PERSIST_SYNC_BACKOFF_SECONDS:-1800}"
 INSTALL_DIR="/opt/hermes"
 
 SYNC_CONFIG_BATCH=(
@@ -34,6 +35,8 @@ SYNC_DIR_BATCHES=(
     "scripts"
 )
 
+declare -A SYNC_BACKOFF_UNTIL
+
 should_exclude_path() {
     local rel_path="$1"
     case "$rel_path" in
@@ -58,7 +61,7 @@ copy_file_to_target() {
     fi
 
     mkdir -p "$(dirname "$dest")"
-    cp -f "$src" "$dest" 2>/dev/null || true
+    cp -f "$src" "$dest" 2>/dev/null
 }
 
 copy_tree_to_target() {
@@ -78,8 +81,27 @@ copy_tree_to_target() {
         fi
         local dest_path="$dest_root/$rel_path"
         mkdir -p "$(dirname "$dest_path")"
-        cp -f "$src_path" "$dest_path" 2>/dev/null || true
-    done < <(find "$src_dir" -type f -print0)
+        cp -f "$src_path" "$dest_path" 2>/dev/null || return 1
+    done < <(find "$src_dir" -type f -print0 2>/dev/null)
+}
+
+run_sync_batch() {
+    local batch_name="$1"
+    local now_epoch
+    now_epoch=$(date +%s)
+
+    if [ -n "${SYNC_BACKOFF_UNTIL[$batch_name]:-}" ] && [ "$now_epoch" -lt "${SYNC_BACKOFF_UNTIL[$batch_name]}" ]; then
+        return 0
+    fi
+
+    if sync_batch_to_persist "$batch_name"; then
+        unset "SYNC_BACKOFF_UNTIL[$batch_name]"
+        return 0
+    fi
+
+    SYNC_BACKOFF_UNTIL[$batch_name]=$((now_epoch + PERSIST_SYNC_BACKOFF_SECONDS))
+    echo "HF sync warning: batch '$batch_name' failed; backing off for ${PERSIST_SYNC_BACKOFF_SECONDS}s" >&2
+    return 0
 }
 
 restore_runtime_from_persist() {
@@ -119,9 +141,9 @@ sync_batch_to_persist() {
 sync_all_batches_to_persist() {
     local item
 
-    sync_batch_to_persist "config"
+    run_sync_batch "config"
     for item in "${SYNC_DIR_BATCHES[@]}"; do
-        sync_batch_to_persist "$item"
+        run_sync_batch "$item"
     done
 }
 
@@ -132,9 +154,9 @@ start_persist_sync_loop() {
     while true; do
         sleep "$PERSIST_SYNC_SECONDS"
         if [ "$batch_index" -eq 0 ]; then
-            sync_batch_to_persist "config"
+            run_sync_batch "config"
         else
-            sync_batch_to_persist "${SYNC_DIR_BATCHES[$((batch_index - 1))]}"
+            run_sync_batch "${SYNC_DIR_BATCHES[$((batch_index - 1))]}"
         fi
         batch_index=$(((batch_index + 1) % total_batches))
     done
