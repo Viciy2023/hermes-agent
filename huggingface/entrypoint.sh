@@ -8,7 +8,17 @@ RUNTIME_HOME="$(printf '%s' "$RUNTIME_HOME_RAW" | sed 's/^[[:space:]]*//;s/[[:sp
 PERSIST_SYNC_SECONDS="${HERMES_PERSIST_SYNC_SECONDS:-300}"
 INSTALL_DIR="/opt/hermes"
 
-SYNC_CONFIG_BATCH=(".env" "config.yaml" "SOUL.md" "state.db" "weixin/accounts")
+SYNC_CONFIG_BATCH=(
+    ".env"
+    "config.yaml"
+    "SOUL.md"
+    "state.db"
+    "weixin/accounts"
+    "channel_directory.json"
+    "auth.json"
+    "processes.json"
+    "gateway_voice_mode.json"
+)
 SYNC_DIR_BATCHES=(
     "sessions"
     "memories"
@@ -17,8 +27,11 @@ SYNC_DIR_BATCHES=(
     "workspace"
     "home"
     "hooks"
+    "skills"
     "skins"
     "optional-skills"
+    "plugins"
+    "scripts"
 )
 
 should_exclude_path() {
@@ -144,7 +157,7 @@ export HERMES_PERSIST_HOME="$PERSIST_HOME"
 export HERMES_HOME="$RUNTIME_HOME"
 export PERSIST_HOME RUNTIME_HOME INSTALL_DIR
 
-mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home,optional-skills,weixin/accounts}
+mkdir -p "$PERSIST_HOME" "$RUNTIME_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home,optional-skills,weixin/accounts,plugins,scripts}
 
 if [ ! -f "$PERSIST_HOME/.env" ]; then
     cp "$INSTALL_DIR/huggingface/.env.space.example" "$PERSIST_HOME/.env"
