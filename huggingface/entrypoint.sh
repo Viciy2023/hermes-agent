@@ -490,6 +490,7 @@ export API_SERVER_ENABLED="${API_SERVER_ENABLED:-true}"
 export API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
 export API_SERVER_PORT="${API_SERVER_PORT:-${PORT:-7860}}"
 export API_SERVER_MODEL_NAME="${API_SERVER_MODEL_NAME:-Hermes-Agent}"
+export HERMES_GATEWAY_VERBOSITY="${HERMES_GATEWAY_VERBOSITY:-1}"
 
 sync_all_batches_to_persist
 
@@ -497,7 +498,37 @@ start_log_forwarder
 start_persist_sync_loop &
 SYNC_PID=$!
 
-hermes gateway run &
+python3 - <<'PY' &
+import asyncio
+import os
+import sys
+
+from gateway.run import start_gateway
+
+
+def _parse_verbosity(raw: str | None) -> int | None:
+    if raw is None:
+        return 1
+    value = str(raw).strip().lower()
+    if value in {"", "1", "info", "true", "yes", "on", "verbose"}:
+        return 1
+    if value in {"2", "debug", "debug2", "vv", "trace"}:
+        return 2
+    if value in {"0", "warn", "warning", "false", "off", "quiet"}:
+        return 0
+    if value in {"none", "silent", "null"}:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return 1
+
+
+verbosity = _parse_verbosity(os.getenv("HERMES_GATEWAY_VERBOSITY"))
+success = asyncio.run(start_gateway(verbosity=verbosity))
+if not success:
+    sys.exit(1)
+PY
 MAIN_PID=$!
 
 STATUS=0
