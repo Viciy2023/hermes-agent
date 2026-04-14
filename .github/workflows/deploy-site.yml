@@ -1,14 +1,6 @@
 name: Deploy Site
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'website/**'
-      - 'landingpage/**'
-      - 'skills/**'
-      - 'optional-skills/**'
-      - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
 permissions:
