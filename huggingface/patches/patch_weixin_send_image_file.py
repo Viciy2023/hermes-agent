@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 from pathlib import Path
 
 
@@ -7,20 +6,19 @@ WEIXIN_TARGET = Path("/opt/hermes/gateway/platforms/weixin.py")
 RUN_TARGET = Path("/opt/hermes/gateway/run.py")
 
 
-WEIXIN_RE = re.compile(
-    r"""(?ms)^\s{4}async def send_image_file\(\n"
-    r"\s{8}self,\n"
-    r"\s{8}chat_id: str,\n"
-    r"\s{8}path: str,\n"
-    r"\s{8}caption: str = \"\",\n"
-    r"\s{8}reply_to: Optional\[str\] = None,\n"
-    r"\s{8}metadata: Optional\[Dict\[str, Any\]\] = None,\n"
-    r"\s{4}\) -> SendResult:\n"
-    r"\s{8}return await self.send_document\(chat_id, path, caption=caption, metadata=metadata\)\n"""
-)
+WEIXIN_OLD = """    async def send_image_file(
+        self,
+        chat_id: str,
+        path: str,
+        caption: str = "",
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        return await self.send_document(chat_id, path, caption=caption, metadata=metadata)
+"""
 
 
-WEIXIN_REPLACEMENT = """    async def send_image_file(
+WEIXIN_NEW = """    async def send_image_file(
         self,
         chat_id: str,
         path: Optional[str] = None,
@@ -47,12 +45,11 @@ def patch_weixin() -> None:
         print("HF patch: Weixin send_image_file compatibility already present")
         return
 
-    patched, count = WEIXIN_RE.subn(WEIXIN_REPLACEMENT, text, count=1)
-    if count != 1:
+    if WEIXIN_OLD not in text:
         print("HF patch warning: could not patch Weixin send_image_file block")
         return
 
-    WEIXIN_TARGET.write_text(patched, encoding="utf-8")
+    WEIXIN_TARGET.write_text(text.replace(WEIXIN_OLD, WEIXIN_NEW), encoding="utf-8")
     print("HF patch: applied Weixin send_image_file compatibility")
 
 
@@ -62,18 +59,49 @@ def patch_run() -> None:
         return
 
     text = RUN_TARGET.read_text(encoding="utf-8")
-    if 'path=media_path' in text or 'path=file_path' in text:
-        print("HF patch: gateway.run image send arguments already compatible")
-        return
 
-    patched = text.replace('image_path=media_path,', 'path=media_path,')
-    patched = patched.replace('image_path=file_path,', 'path=file_path,')
+    old_media = """                        await adapter.send_image_file(
+                            chat_id=event.source.chat_id,
+                            image_path=media_path,
+                            metadata=_thread_meta,
+                        )
+"""
+    new_media = """                        await adapter.send_image_file(
+                            chat_id=event.source.chat_id,
+                            path=media_path,
+                            metadata=_thread_meta,
+                        )
+"""
 
-    if patched == text:
+    old_file = """                        await adapter.send_image_file(
+                            chat_id=event.source.chat_id,
+                            image_path=file_path,
+                            metadata=_thread_meta,
+                        )
+"""
+    new_file = """                        await adapter.send_image_file(
+                            chat_id=event.source.chat_id,
+                            path=file_path,
+                            metadata=_thread_meta,
+                        )
+"""
+
+    changed = False
+    if old_media in text:
+        text = text.replace(old_media, new_media)
+        changed = True
+    if old_file in text:
+        text = text.replace(old_file, new_file)
+        changed = True
+
+    if not changed:
+        if 'path=media_path' in text and 'path=file_path' in text:
+            print("HF patch: gateway.run image send arguments already compatible")
+            return
         print("HF patch warning: could not patch gateway.run image send arguments")
         return
 
-    RUN_TARGET.write_text(patched, encoding="utf-8")
+    RUN_TARGET.write_text(text, encoding="utf-8")
     print("HF patch: applied gateway.run image send argument compatibility")
 
 
