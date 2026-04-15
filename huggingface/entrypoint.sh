@@ -414,7 +414,10 @@ print(
     "Weixin bootstrap: env snapshot "
     f"account_id={'set' if env_values.get('WEIXIN_ACCOUNT_ID') else 'missing'} "
     f"token={'set' if env_values.get('WEIXIN_TOKEN') else 'missing'} "
-    f"base_url={env_values.get('WEIXIN_BASE_URL') or '(missing)'}"
+    f"base_url={env_values.get('WEIXIN_BASE_URL') or '(missing)'} "
+    f"dm_policy={env_values.get('WEIXIN_DM_POLICY') or '(missing)'} "
+    f"allowed_users={env_values.get('WEIXIN_ALLOWED_USERS') or '(missing)'} "
+    f"home_channel={env_values.get('WEIXIN_HOME_CHANNEL') or '(missing)'}"
 )
 
 if not env_values.get("WEIXIN_ACCOUNT_ID") or not env_values.get("WEIXIN_TOKEN"):
@@ -433,7 +436,10 @@ print(
     "Weixin bootstrap: effective credentials "
     f"account_id={'set' if env_values.get('WEIXIN_ACCOUNT_ID') else 'missing'} "
     f"token={'set' if env_values.get('WEIXIN_TOKEN') else 'missing'} "
-    f"base_url={env_values.get('WEIXIN_BASE_URL') or '(missing)'}"
+    f"base_url={env_values.get('WEIXIN_BASE_URL') or '(missing)'} "
+    f"dm_policy={env_values.get('WEIXIN_DM_POLICY') or '(missing)'} "
+    f"allowed_users={env_values.get('WEIXIN_ALLOWED_USERS') or '(missing)'} "
+    f"home_channel={env_values.get('WEIXIN_HOME_CHANNEL') or '(missing)'}"
 )
 
 should_run_qr, reason = should_run_weixin_qr_login(env_values)
