@@ -3,8 +3,11 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
+from pathlib import Path
 
 
 SIZE_MAP = {
@@ -52,6 +55,26 @@ def _post_json(url: str, api_key: str, payload: dict) -> dict:
         _fail(f"Image generation returned invalid JSON: {exc}: {body[:300]}")
 
 
+def _download_file(url: str) -> Path:
+    parsed = urllib.parse.urlparse(url)
+    suffix = Path(parsed.path).suffix or ".png"
+    output_dir = Path(tempfile.gettempdir()) / "hermes-qwen-image-gen"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix="qwen-image-", suffix=suffix, dir=output_dir)
+    os.close(fd)
+    path = Path(temp_path)
+
+    try:
+        with urllib.request.urlopen(url, timeout=180) as response:
+            path.write_bytes(response.read())
+    except Exception as exc:
+        if path.exists():
+            path.unlink(missing_ok=True)
+        _fail(f"Failed to download generated image: {exc}")
+
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate an image via qwen2API and emit a MEDIA path.")
     parser.add_argument("--prompt", required=True, help="Image prompt")
@@ -83,7 +106,9 @@ def main() -> None:
     if not image_url:
         _fail(f"Image generation returned no image URL: {json.dumps(result, ensure_ascii=False)[:500]}")
 
-    print(f"![generated]({image_url})")
+    local_path = _download_file(image_url)
+    print(f"MEDIA:{local_path}")
+
 
 
 if __name__ == "__main__":

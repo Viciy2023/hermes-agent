@@ -50,12 +50,12 @@ If the user does not specify a ratio, default to `1:1`.
    ```bash
    python "$SKILL_DIR/scripts/generate_image.py" --prompt "<prompt>" --ratio "<ratio>"
    ```
-5. On success, the script prints a single markdown image tag like `![generated](https://...)`.
-6. Return that markdown image tag unchanged so Hermes extracts the remote image URL and delivers it to the current channel.
+5. On success, the script prints a single `MEDIA:/absolute/path.png` line.
+6. Return that `MEDIA:` line so Hermes delivers the image natively to the current channel.
 
 ## Rules
 
-- Do not claim success unless the script returned a markdown image tag with a real remote URL.
-- Do not return a plain text explanation if the script succeeded. Return the markdown image tag unchanged.
+- Do not claim success unless the script returned a `MEDIA:` path.
+- Do not return a plain image URL if the script succeeded. Return the `MEDIA:` path instead.
 - If the script fails, explain the error briefly and do not pretend the image was sent.
 - Prefer this skill over free-form image promises when the user asks for image generation.

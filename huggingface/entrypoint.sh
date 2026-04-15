@@ -288,6 +288,7 @@ if [ -d "$INSTALL_DIR/skills" ]; then
 fi
 
 install_hf_skills
+python3 "$INSTALL_DIR/huggingface/patches/patch_weixin_send_image_file.py"
 
 python3 - <<'PY'
 import asyncio

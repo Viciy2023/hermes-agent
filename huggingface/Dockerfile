@@ -18,7 +18,9 @@ RUN mkdir -p /opt/hermes/huggingface && \
     cp /tmp/huggingface/entrypoint.sh /opt/hermes/huggingface/entrypoint.sh && \
     cp /tmp/huggingface/config.space.yaml /opt/hermes/huggingface/config.space.yaml && \
     cp /tmp/huggingface/.env.space.example /opt/hermes/huggingface/.env.space.example && \
-    cp -r /tmp/huggingface/skills /opt/hermes/huggingface/skills
+    cp -r /tmp/huggingface/skills /opt/hermes/huggingface/skills && \
+    mkdir -p /opt/hermes/huggingface/patches && \
+    cp /tmp/huggingface/patches/patch_weixin_send_image_file.py /opt/hermes/huggingface/patches/patch_weixin_send_image_file.py
 
 WORKDIR /opt/hermes
 
