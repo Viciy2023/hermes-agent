@@ -170,6 +170,22 @@ start_persist_sync_loop() {
     done
 }
 
+install_hf_skills() {
+    local source_dir="$INSTALL_DIR/huggingface/skills"
+    local target_root
+
+    if [ ! -d "$source_dir" ]; then
+        return 0
+    fi
+
+    for target_root in "$RUNTIME_HOME" "$PERSIST_HOME"; do
+        mkdir -p "$target_root/skills"
+        copy_tree_to_target "$INSTALL_DIR/huggingface" "$target_root" "skills"
+    done
+
+    echo "HF skills: synchronized bundled HF skills into runtime and persist homes"
+}
+
 ensure_platform_toolsets() {
     python3 - <<'PY'
 import sys
@@ -270,6 +286,8 @@ restore_runtime_from_persist
 if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
 fi
+
+install_hf_skills
 
 python3 - <<'PY'
 import asyncio
@@ -491,7 +509,6 @@ if [ "$ACTIVE_CUSTOM_MODEL" = "fourth" ]; then
         exit 1
     fi
 fi
-
 if [ -n "$SELECTED_CUSTOM_ENDPOINT_URL" ]; then
     hermes config set model.provider "custom"
     hermes config set model.base_url "$SELECTED_CUSTOM_ENDPOINT_URL"
