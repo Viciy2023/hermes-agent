@@ -1,0 +1,10 @@
+name: qwen-image-gen
+version: "1.0.0"
+description: HF-only plugin that generates images through the dedicated text-to-image endpoint and returns a native media attachment path.
+author: hermes-hf
+provides_tools:
+  - qwen_image_generate
+requires_env:
+  - TEXT_TO_IMAGE_OPENAI_BASE_URL
+  - TEXT_TO_IMAGE_OPENAI_API_KEY
+  - TEXT_TO_IMAGE_MODEL

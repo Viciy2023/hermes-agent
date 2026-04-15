@@ -186,6 +186,22 @@ install_hf_skills() {
     echo "HF skills: synchronized bundled HF skills into runtime and persist homes"
 }
 
+install_hf_plugins() {
+    local source_dir="$INSTALL_DIR/huggingface/plugins"
+    local target_root
+
+    if [ ! -d "$source_dir" ]; then
+        return 0
+    fi
+
+    for target_root in "$RUNTIME_HOME" "$PERSIST_HOME"; do
+        mkdir -p "$target_root/plugins"
+        copy_tree_to_target "$INSTALL_DIR/huggingface" "$target_root" "plugins"
+    done
+
+    echo "HF plugins: synchronized bundled HF plugins into runtime and persist homes"
+}
+
 ensure_platform_toolsets() {
     python3 - <<'PY'
 import sys
@@ -288,6 +304,7 @@ if [ -d "$INSTALL_DIR/skills" ]; then
 fi
 
 install_hf_skills
+install_hf_plugins
 python3 "$INSTALL_DIR/huggingface/patches/patch_weixin_send_image_file.py"
 
 python3 - <<'PY'
