@@ -42,20 +42,19 @@ If the user does not specify a ratio, default to `1:1`.
 
 1. Extract the image prompt from the user request.
 2. Choose a ratio: `1:1`, `16:9`, or `9:16`.
-3. Find the skill directory:
-   ```bash
-   SKILL_DIR=$(dirname "$(find ~/.hermes/skills -path '*/qwen-image-gen/SKILL.md' 2>/dev/null | head -1)")
-   ```
-4. Run the helper script:
-   ```bash
-   python "$SKILL_DIR/scripts/generate_image.py" --prompt "<prompt>" --ratio "<ratio>"
-   ```
-5. On success, the script prints a single `MEDIA:/absolute/path.png` line.
-6. Return that `MEDIA:` line so Hermes delivers the image natively to the current channel.
+3. Call the plugin tool `qwen_image_generate` with:
+   - `prompt`
+   - `ratio`
+4. Wait for the real tool result.
+5. If the tool succeeds, it returns JSON containing a real `media_tag` like `MEDIA:/absolute/path.png`.
+6. Return that `media_tag` unchanged so Hermes delivers the image natively to the current channel.
 
 ## Rules
 
-- Do not claim success unless the script returned a `MEDIA:` path.
-- Do not return a plain image URL if the script succeeded. Return the `MEDIA:` path instead.
+- Do not invent or guess a `MEDIA:` path.
+- Do not simulate script execution.
+- Do not fabricate success.
+- Do not claim success unless the `qwen_image_generate` tool returned a real `media_tag`.
+- If the tool succeeds, return the `media_tag` unchanged.
 - If the script fails, explain the error briefly and do not pretend the image was sent.
 - Prefer this skill over free-form image promises when the user asks for image generation.
