@@ -62,6 +62,8 @@ jobs:
           cp "huggingface/README.md" "hf-space/huggingface/README.md"
           rm -rf "hf-space/huggingface/skills"
           cp -r "huggingface/skills" "hf-space/huggingface/skills"
+          rm -rf "hf-space/huggingface/patches"
+          cp -r "huggingface/patches" "hf-space/huggingface/patches"
           chmod +x "hf-space/huggingface/entrypoint.sh"
 
       - name: Commit and push changes to Hugging Face Space
@@ -71,7 +73,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md Dockerfile huggingface/entrypoint.sh huggingface/config.space.yaml huggingface/.env.space.example huggingface/README.md huggingface/skills
+          git add README.md Dockerfile huggingface/entrypoint.sh huggingface/config.space.yaml huggingface/.env.space.example huggingface/README.md huggingface/skills huggingface/patches
           if git diff --cached --quiet; then
             echo "No Hugging Face deployment changes to push."
             exit 0
