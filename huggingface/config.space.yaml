@@ -7,6 +7,10 @@ model:
 display:
   skin: "default"
 
+platform_toolsets:
+  api_server:
+    - "all"
+
 terminal:
   backend: "local"
   cwd: "."

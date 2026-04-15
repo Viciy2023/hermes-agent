@@ -170,6 +170,52 @@ start_persist_sync_loop() {
     done
 }
 
+ensure_api_server_toolsets() {
+    python3 - <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except Exception as exc:
+    print(f"HF config warning: PyYAML unavailable, cannot enforce api_server toolsets: {exc}", file=sys.stderr)
+    sys.exit(0)
+
+config_path = Path("/data/config.yaml")
+if not config_path.exists():
+    sys.exit(0)
+
+try:
+    raw = config_path.read_text(encoding="utf-8")
+    data = yaml.safe_load(raw) or {}
+except Exception as exc:
+    print(f"HF config warning: failed to read {config_path}: {exc}", file=sys.stderr)
+    sys.exit(0)
+
+if not isinstance(data, dict):
+    print(f"HF config warning: {config_path} is not a YAML mapping; skipping api_server toolset enforcement", file=sys.stderr)
+    sys.exit(0)
+
+platform_toolsets = data.get("platform_toolsets")
+if not isinstance(platform_toolsets, dict):
+    platform_toolsets = {}
+    data["platform_toolsets"] = platform_toolsets
+
+desired = ["all"]
+current = platform_toolsets.get("api_server")
+if current == desired:
+    sys.exit(0)
+
+platform_toolsets["api_server"] = desired
+
+config_path.write_text(
+    yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+    encoding="utf-8",
+)
+print("HF config: enforced platform_toolsets.api_server = ['all']")
+PY
+}
+
 start_log_forwarder() {
     local log_dir="$RUNTIME_HOME/logs"
     mkdir -p "$log_dir"
@@ -209,6 +255,8 @@ fi
 if [ ! -f "$PERSIST_HOME/config.yaml" ]; then
     cp "$INSTALL_DIR/huggingface/config.space.yaml" "$PERSIST_HOME/config.yaml"
 fi
+
+ensure_api_server_toolsets
 
 if [ ! -f "$PERSIST_HOME/SOUL.md" ]; then
     cp "$INSTALL_DIR/docker/SOUL.md" "$PERSIST_HOME/SOUL.md"
