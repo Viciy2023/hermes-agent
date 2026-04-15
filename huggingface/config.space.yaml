@@ -10,6 +10,8 @@ display:
 platform_toolsets:
   api_server:
     - "all"
+  weixin:
+    - "all"
 
 terminal:
   backend: "local"

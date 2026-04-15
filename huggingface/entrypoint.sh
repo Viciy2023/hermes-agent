@@ -170,7 +170,7 @@ start_persist_sync_loop() {
     done
 }
 
-ensure_api_server_toolsets() {
+ensure_platform_toolsets() {
     python3 - <<'PY'
 import sys
 from pathlib import Path
@@ -202,17 +202,20 @@ if not isinstance(platform_toolsets, dict):
     data["platform_toolsets"] = platform_toolsets
 
 desired = ["all"]
-current = platform_toolsets.get("api_server")
-if current == desired:
-    sys.exit(0)
+changed = False
+for platform_name in ("api_server", "weixin"):
+    if platform_toolsets.get(platform_name) != desired:
+        platform_toolsets[platform_name] = desired
+        changed = True
 
-platform_toolsets["api_server"] = desired
+if not changed:
+    sys.exit(0)
 
 config_path.write_text(
     yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
     encoding="utf-8",
 )
-print("HF config: enforced platform_toolsets.api_server = ['all']")
+print("HF config: enforced platform_toolsets.api_server = ['all'] and platform_toolsets.weixin = ['all']")
 PY
 }
 
@@ -256,7 +259,7 @@ if [ ! -f "$PERSIST_HOME/config.yaml" ]; then
     cp "$INSTALL_DIR/huggingface/config.space.yaml" "$PERSIST_HOME/config.yaml"
 fi
 
-ensure_api_server_toolsets
+ensure_platform_toolsets
 
 if [ ! -f "$PERSIST_HOME/SOUL.md" ]; then
     cp "$INSTALL_DIR/docker/SOUL.md" "$PERSIST_HOME/SOUL.md"
