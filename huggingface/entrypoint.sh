@@ -170,6 +170,20 @@ start_persist_sync_loop() {
     done
 }
 
+export_runtime_env_file() {
+    local env_file="$RUNTIME_HOME/.env"
+    if [ ! -f "$env_file" ]; then
+        return 0
+    fi
+
+    set -a
+    # shellcheck disable=SC1090
+    . "$env_file"
+    set +a
+
+    echo "HF env: exported runtime .env into process environment"
+}
+
 install_hf_skills() {
     local source_dir="$INSTALL_DIR/huggingface/skills"
     local target_root
@@ -298,6 +312,7 @@ if [ ! -f "$PERSIST_HOME/SOUL.md" ]; then
 fi
 
 restore_runtime_from_persist
+export_runtime_env_file
 
 if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py"
